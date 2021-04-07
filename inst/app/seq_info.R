@@ -92,6 +92,19 @@ plot.slidingwindow <- function(sequence,winsize,type){
 
 annot <- callModule(annotationTable, "annot.table", heatmap.selected)
 
+output$filterInfo <- renderUI({
+  filter_settings <- req(input$contig_table_search_columns)
+  
+  filter_settings[filter_settings==''] <- "All"
+  names(filter_settings) <- c("length.homology","identity","evalue(-log10)","bitscore","contig.length","fraction.homology","readcount")
+    
+  fields <- tags$div(lapply(names(filter_settings), function(field){
+    list(tags$strong(paste(field,": ")), filter_settings[field], br())
+  }))
+
+  return(fields)
+})
+
 get.contig.selected <- reactive({
   validate(need(!is.null(annot$selected()),message="Please select a contig to visualize"))
   selected <- req(annot$table())[annot$selected()]
@@ -106,19 +119,20 @@ output$select.contig.current <- renderUI({
 
 	ui <- pickerInput(inputId = "current_contig",
   	label = "Select Contig",
-		choices = choices,
-		choicesOpt = list(subtext = paste("Annotation", selected[,annotation], sep = ": "))
+		choices = choices
 	)
 	return(ui)
 })
 
 get.contig.current <- reactive({
+  req(input$current_contig)
 	selected <- get.contig.selected()
-	current <- selected[as.numeric(req(input$current_contig))]
+	current <- selected[as.numeric(input$current_contig)]
 	return(current)
 })
 
 get.contig.seq <- reactive({
+  req(contig_data())
 	current <- get.contig.current()
 	contigid <- as.character(current$contig.id)
 	file <- as.character(current$file.id)
@@ -199,15 +213,17 @@ output$contig.summary <- renderUI({
 })
 
 output$orfplot <- renderRbokeh({
+  orfs <- get.contig.orfs()
 	selected <- get.contig.current()
-	hit.start <- selected$hit.start
-	hit.end <- selected$hit.end
-
-	orfs <- get.contig.orfs()
-	if (any(is.na(c(hit.start,hit.end))))
-		plot.orfs(orfs,input$orf.size.cutoff)
-	else
-		plot.orfs(orfs,input$orf.size.cutoff) %>% ly_abline(v=hit.start) %>% ly_abline(v=hit.end)
+	
+	if (all(c("hit.start","hit.end")%in%colnames(selected))) {
+	  if (all(!is.na(c(selected$hit.start,selected$hit.end)))) {
+	    return(
+	      plot.orfs(orfs,input$orf.size.cutoff) %>% ly_abline(v=selected$hit.start) %>% ly_abline(v=selected$hit.end)
+	    )
+	  }
+	}
+	return(plot.orfs(orfs,input$orf.size.cutoff))
 })
 
 output$orf.size.cutoff <- renderUI({
@@ -296,11 +312,13 @@ output$orf.collection.table <-  DT::renderDataTable({
   	options = list(
   		ordering=F,
   		dom = "t",
-  		pageLength = 100,
-  		lengthMenu = 25,
-  		scrollX = TRUE,
-  		scrollY = 100,
-  		sScrollY = "400px"
+  		pageLength = 10,
+  		scrollX = TRUE
+  		# pageLength = 100,
+  		# lengthMenu = 25,
+  		# scrollX = TRUE,
+  		# scrollY = 100,
+  		# sScrollY = "400px"
     )
   )
 	return(outputtable)
